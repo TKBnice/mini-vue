@@ -1,0 +1,82 @@
+<script>
+
+class Dep{
+	constructor(){
+		this.subscribers = new Set()
+	}
+	depend(){//订阅
+		if(activeUpadte){
+			this.subscribers.add(activeUpadte)
+		}
+	}
+	notify(){//通知
+		this.subscribers.forEach(upade=>upade())
+	}
+}
+
+
+let activeUpadte
+
+function isObject (obj) {
+    return typeof obj === 'object'
+      && !Array.isArray(obj)
+      && obj !== null
+      && obj !== undefined
+}
+
+// 1.将对象加入观察
+function observe(obj){
+	if (!isObject(obj)) {
+    throw new TypeError()
+  }
+	
+	Object.keys(obj).forEach((key)=>{
+		let internalValue = obj[key]
+		let dep = new Dep()
+			Object.defineProperty(obj,key,{
+				get(){
+					dep.depend()//加入依赖
+					return internalValue
+				},
+				set(newValue){
+					const isChanged = internalValue !== newValue
+					if (isChanged) {
+						internalValue = newValue
+						dep.notify()//触发依赖
+					}
+				}
+			})
+	})
+}
+
+
+// 2. 依赖跟踪器，收集依赖
+function autorun(upade){
+	function wrappedUpade(){
+		activeUpadte = wrappedUpade //放入全局依赖
+		upade()
+		activeUpadte = null
+	}
+	wrappedUpade()
+}
+
+
+const state = {
+	count:0,
+	status:true
+}
+
+observe(state)
+
+autorun(()=>{
+	console.log('---state.count',state.count)
+})
+
+
+setInterval(()=>{
+	state.count++
+	state.status = !state.status
+},1000)
+
+
+</script>
