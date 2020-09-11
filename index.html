@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Document</title>
+</head>
+<body>
+	<div id="app">
+		<div id="school" data="132">{{school}}</div>
+		<div v-text="address"></div>
+		<input type="text" v-model="school">
+		<input type="text" v-model="student.name">
+		<ul>
+			<li>{{student.name}}</li>
+			<li>{{student.age}}</li>
+			<li>{{hello}}</li>
+		</ul>
+	</div>
+</body>
+<script>
+
+
+function isObject (obj) {
+	return typeof obj === 'object'
+		&& !Array.isArray(obj)
+		&& obj !== null
+		&& obj !== undefined
+}
+
+class Dep{
+	constructor(){
+		this.subscribers = new Set()
+	}
+	addSub(sub){
+		console.log('addSub---')
+		this.subscribers.add(sub)
+	}
+	notify(){
+		console.log(this)
+		this.subscribers.forEach((watcher)=>{watcher.update()})
+	}
+}
+
+
+class Observer{
+	constructor(data){
+		this.observer(data)
+	}
+	observer(data){
+		if (isObject(data)) {
+			//如果data存在且类型是object类型
+			Object.keys(data).forEach((key)=>{
+				let internalValue = data[key]
+				let dep = new Dep()
+				this.observer(internalValue)
+				Object.defineProperty(data,key,{
+					get(){
+						Dep.target && dep.addSub(Dep.target)
+						return internalValue
+					},
+					set:(newValue)=>{
+						const isChanged = newValue !== internalValue
+						if(isChanged){
+							console.log('set----')
+							internalValue = newValue
+							dep.notify()
+						}
+					}
+				})
+			})
+		}
+	}
+}
+
+
+class Watcher{
+	constructor(vm, expr,cb,type){
+		this.vm = vm
+		this.expr = expr
+		this.cb = cb    // cb表示当状态改变了，要干的事 
+		//刚开始需要保存一个老的状态
+		this.value = this.get()
+	}
+	get(){
+		Dep.target  = this
+		let oldValue = CompilerUtil.getVal(this.vm,this.expr) //在 new Watcher 保存旧值 触发 dep 加入观察
+		Dep.target = null
+		return oldValue
+	}
+	// 当状态发生改变后，会调用观察者的update方法来更新视图
+	update() {
+		let newVal = CompilerUtil.getVal(this.vm, this.expr)
+		if (newVal !== this.value) {
+			this.cb(newVal)
+		}
+	}
+}
+
+class Compile{
+	constructor(el,vm){
+		this.vm = vm
+		this.el = this.isElementNode(el) ? el : document.querySelector(el)
+		let fragment = this.node2fragment(this.el)//把模板存放到文档碎片里
+		//替换（编译模板）用数据来编译
+		this.compile(fragment)
+		this.el.appendChild(fragment)
+	}
+	//定义一个方法，用来把模板存放到文档碎片里
+	node2fragment(nodes){
+		//创建储存文档碎片
+		let fragment = document.createDocumentFragment()
+		//第一个子节点
+		let firstChild
+		// 循环取出根节点中的第一个子节点并放入文档碎片中
+		while(firstChild = nodes.firstChild){
+			fragment.appendChild(firstChild)
+		}
+		//返回模板
+		return fragment
+	}
+	compile(nodes){
+		let childNodes = nodes.childNodes;   //childNodes是一个伪数组
+		[...childNodes].forEach((child)=>{
+			//是元素节点
+			if(this.isElementNode(child)){
+				this.compileElement(child)
+				this.compile(child)
+			}else{//是文本节点
+				this.compileText(child)
+			}
+		})
+	}
+	//元素节点编译-直接修改节点属性
+	compileElement(node){
+		let attributes = node.attributes; //元素属性节点
+		[...attributes].forEach(attr => {//attr 为特殊的object类型{id="school"}/{data="132"}
+			let { name, value: expr } = attr 
+			//判断是否是一个指令
+			if(this.isDirective(name)){
+				let [, directive] = name.split('-')
+				CompilerUtil[directive](node, expr, this.vm)//调用不同的处理指令
+			}
+		});
+	}
+	//文本节点编译-直接修改节点属性
+	compileText(node){
+		const content = node.textContent
+		const reg = /\{\{(.+?)\}\}/
+		if(reg.test(content)){
+			CompilerUtil['changeTextContent'](node, content, this.vm)
+		}
+	}
+	isDirective(attrName){
+		return attrName.startsWith('v-')
+	}
+	//判断一个节点是否是元素节点
+	isElementNode(node) {
+		return node.nodeType === 1
+	}
+}
+
+class ComputedWatcher{
+	constructor(vm,expr,cb){
+		this.vm = vm
+    this.expr = expr
+    this.cb = cb
+		this.value = this.get()
+	}
+	get(){
+		Dep.target  = this
+		let oldValue = CompilerUtil.getVal(this.vm,this.expr) 
+		Dep.target = null
+		return oldValue
+	}
+	update() {
+    let newVal = CompilerUtil.getVal(this.vm,this.expr)
+    if (newVal !== this.value) {
+      this.value = newVal
+      this.cb(newVal)
+    }
+  }
+}
+
+const CompilerUtil = {
+	model(node, expr, vm){
+		// console.log(node, expr, vm);
+		let fn = this.updater['modelUpdater']
+		let content = this.getVal(vm, expr)
+		new Watcher(vm, expr, (newVal)=>{
+			fn(node, newVal)
+		})
+		node.addEventListener('input', (e) => {
+			let value = e.target.value  //e.target.value可以获得输入框中的内容
+			//调用setVal方法，设置数据
+			this.setVal(vm, expr, value)
+		})
+		
+		fn(node, content)
+	},
+	text(node, expr, vm){
+		let fn = this.updater['textUpdater']
+		let content = this.getVal(vm, expr)
+		new Watcher(vm, expr, (newVal)=>{
+			fn(node, newVal)
+		})
+		fn(node, content)
+	},
+	changeTextContent(node, expr, vm){
+		let content
+		let fn = this.updater['textUpdater']
+		let k = (/\{\{(.+?)\}\}/g).exec(expr)[1]
+
+		if(k in vm.$computed){
+			console.log('111')
+			let computed = new ComputedWatcher(vm, k, (newVal) => {
+				console.log(newVal);
+				fn(node, newVal)
+			})
+
+			content = computed.value
+
+		}else{
+			content = expr.replace(/\{\{(.+?)\}\}/g, (...args) => {
+				new Watcher(vm, args[1], (newVal)=>{
+					fn(node, newVal)
+				})
+				return this.getVal(vm, args[1])//school.age
+			})
+		}
+
+
+		fn(node, content)
+	},
+	getVal(vm,expr){
+		return expr.split('.').reduce((data,key)=>{
+			if(key in vm.$computed){
+				return vm.$computed[key].call(vm)
+			}
+			return data[key] 
+		},vm.$data)
+	},
+	setVal(vm, expr, value){
+		expr.split('.').reduce((data,key,index,arr)=>{
+			if (index == arr.length - 1) {
+				return data[key] = value  // 设置数据
+			}
+			return data[key]
+		},vm.$data)
+	},
+	updater:{
+		textUpdater(node, value) {
+			node.textContent = value
+		},
+		modelUpdater(node, value){
+			node.value = value
+		}
+	}
+}
+
+class Vue{
+	constructor(options){
+		this.$data = options.data() || {}
+		this.$el = options.el || '#app'
+		this.$computed = options.computed || {}
+		
+		// for (let key in options.computed) {
+		// 	Object.defineProperty(this.$data, key, {
+		// 		get: () => {
+		// 			return options.computed[key].call(this);
+		// 		}
+		// 	})
+		// }
+
+		this._proxyData(this.$data) // data数据代理
+
+		new Observer(this.$data) // 数据劫持
+ 
+		// 在遍历data设值getter和setter的时候，会分别创建各自的响应式空间。
+
+		// 在这个空间内，执行模板编译的时候， 
+
+		// new Watcther的时候，会触发geter 获取当前 data对应数据的值，并将watcher收入依赖中(dep)
+
+		// 在对data对应的值修改的时候，在响应式空间中，会触发依赖收集(dep)执行notify
+
+		new Compile(this.$el,this) // 模板编译
+
+
+	}
+	_proxyData(data){
+		Object.keys(data).forEach((key)=>{
+			Object.defineProperty(this,key,{
+				get(){
+					return data[key]
+				}
+			})
+		})
+	}
+}
+
+
+
+
+const vm =  new Vue({
+	el:'#app',
+	data(){
+		return{
+			school:"花园小学",
+			address:"四川",
+			student:{
+				age:18,
+				name:'张三'
+			}
+		}
+	},
+	computed: {
+		hello() {
+			return `你好我是${this.student.name},今年${this.student.age}岁。`;
+		}
+	}
+})
+
+
+console.log(vm);
+</script>
+</html>
