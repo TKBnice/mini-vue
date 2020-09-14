@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Document</title>
+</head>
+
+<body>
+	<div id="app">
+		<div id="school" data="132">{{school}}</div>
+		<div v-text="address"></div>
+		<input type="text" v-model="school">
+		<input type="text" v-model="student.name">
+		<ul>
+			<li>{{student.name}}</li>
+			<li>{{student.age}}</li>
+			<li>{{hello}}</li>
+		</ul>
+	</div>
+	<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+	<script>
+		const vm = new Vue({
+			el: '#app',
+			data() {
+				return {
+					school: "花园小学",
+					address: "四川",
+					student: {
+						age: 18,
+						name: '张三'
+					}
+				}
+			},
+			computed: {
+				hello() {
+					return `你好我是${this.student.name},今年${this.student.age}岁。`;
+				}
+			},
+		watch: {
+			school(newVal,oldValue) {
+				console.log(newVal,oldValue);
+				// console.log(`欢迎来到${this.school}！`)
+			}
+		}
+		})
+		console.log(vm)
+	</script>
+</body>
+
+</html>
